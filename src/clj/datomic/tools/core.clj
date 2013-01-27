@@ -77,7 +77,7 @@
   )
 
 (defmacro def-free-database 
-  "Set up a free database."
+  "Set up a free in-memory database."
   [name]
   `(defdatabase "datomic:free://localhost:4334" ~name)
   )
