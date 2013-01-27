@@ -8,7 +8,7 @@
 
 (defn reload []
   "Helper for easy development at the repl."
-   (use 'datomic-tools.samples.sql :reload-all)
+   (use 'clj.datomic.tools.samples.sql :reload-all)
   )
 
 ;; create a temporary database 
