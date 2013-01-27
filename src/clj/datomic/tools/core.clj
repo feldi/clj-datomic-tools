@@ -44,8 +44,6 @@
 
 (defrecord ^:private Database [name uri conn])
 
-(print (meta (Database. nil nil nil)))
-
 (defonce ^:dynamic *databases*         (atom {}))
 (defonce ^:dynamic *current-database*  (atom nil))
 
@@ -56,7 +54,7 @@
 (defonce ^:dynamic *tx-report-queue*    (atom nil))
 
 ;; from Demonic:
-;; run transaction in demarcation
+;; vars for running a transaction in demarcation
 
 (defonce ^:dynamic *in-demarcation*    false)
 (defonce ^:dynamic *pending-tx-data*  (atom []))
@@ -69,6 +67,7 @@
 ;; handle database names and uris
 
 (defn defdatabase 
+  "Set up a database by uri and name."
   [uri name]
   (let [full-name (str uri "/" name)
         database  (Database. name full-name nil)] 
@@ -78,26 +77,31 @@
   )
 
 (defmacro def-free-database 
+  "Set up a free database."
   [name]
   `(defdatabase "datomic:free://localhost:4334" ~name)
   )
 
 (defmacro def-dev-database 
+  "Set up a local-storage database."
   [name]
   `(defdatabase "datomic:dev://localhost:4334" ~name)
   )
 
 (defmacro def-mem-database
+  "Set up a in-memory database."
   [name]
   `(defdatabase "datomic:mem:/" ~name)
   )
 
 (defn get-database 
+  "Get a named database."
   [name]
   (get @*databases* name)
   )
 
 (defn get-database-uri 
+  "Get the URI of the current or a named database." 
   ([]     (:uri @*current-database*))
   ([name] (or (:uri (get-database name)) name ))
   )
@@ -106,6 +110,7 @@
 ;; handle databases 
 
 (defn open-database 
+  "Prepare the named database for use."
   [name]
   (let [full-name (get-database-uri name)
         conn      (d/connect full-name) 
@@ -117,15 +122,18 @@
   )
 
 (defn- create-database* [name] 
+  "Helper. See create-database." 
   (d/create-database (get-database-uri name))
   (open-database name))
 
 (defn create-database 
+  "Create a new database."
   ([]     (create-database* (:name  @*current-database*)))
   ([name] (create-database*  name))
   )
 
 (defn- delete-database* [name]
+  "Helper. See delete-database." 
   (d/delete-database (get-database-uri name))
   (swap! *databases* dissoc name )
   (when (= name (:name @*current-database*))
@@ -133,11 +141,13 @@
   )
 
 (defn delete-database 
+  "Delete a database."
   ([]     (delete-database* (:name  @*current-database*)))
   ([name] (delete-database* name))
   )
 
 (defn- rename-database* [old-name new-name]
+   "Helper. See rename-database." 
   (when (d/rename-database (get-database-uri old-name) new-name)
      (swap! *databases* dissoc old-name)
      (when (= old-name (:name @*current-database*))
@@ -146,6 +156,7 @@
     ))
 
 (defn rename-database 
+  "Rename a database." 
   ([new-name]          (rename-database* (:name @*current-database*)
                                          new-name))
   ([old-name new-name] (rename-database* old-name
@@ -153,16 +164,10 @@
 
 ;; use for testing or showcase purposes
 
-(defmacro def-scratch-database
-  "Make a throw-away-database, e.g. for testing or showcase use."
-  []
-  `(defdatabase "datomic:mem:/" (str "scratch-db-" (d/squuid))  )
-  )
-
 (defn scratch-database
   "Make a throw-away-database, e.g. for testing or showcase use."
   []
-  (def-scratch-database)
+  (defdatabase "datomic:mem:/" (str "scratch-db-" (d/squuid)))
   (create-database) 
   (println (str "Created database " (get-database-uri))) 
   (get-database-uri))
@@ -179,11 +184,13 @@
 ;; handle database connections
 
 (defn get-conn
+  "Gets the current or named database connection." 
   ([]     (:conn @*current-database*))
   ([name] (:conn (get-database name)))
   )
 
 (defmacro with-database 
+  "Eval forms with the named database set as current database." 
   [name & forms]
   `(binding [*current-database* (get-database ~name)]
     ~@forms))
@@ -191,22 +198,37 @@
 
 ;; handle db as values
 
-(defn get-db 
-  ([]  (or @*current-db*
-          (d/db (get-conn))))
-  ([name] (d/db (get-conn name)))
-)
-
 (defn set-db
+  "Set the current db." 
   [db]
-  (reset! *current-db* db))
+  (reset! *current-db* db)
+  db)
+
+(defn db
+  "Get the current db."
+  []
+  (@*current-db*))
+
+(defn fresh-db
+  "Sets a fresh db as current and returns it." 
+  ([]     (set-db (d/db (get-conn))))
+  ([name] (d/db (get-conn name))))
+
+(defn get-db 
+  "Gets the current db, if set, or a fresh one." 
+  ([]  (or @*current-db*
+          (set-db (d/db (get-conn)))))
+  ([name] (d/db (get-conn name))))
+
 
 (defmacro with-db 
+  "Eval forms with the given db set as current db." 
   [db & forms]
   `(binding [*current-db* ~db]
     ~@forms))
 
-(defmacro with-latest-db 
+(defmacro with-fresh-db 
+  "Eval forms with a fresh db set as current db." 
   [& forms]
   `(binding [*current-db* (d/db (get-conn))]
     ~@forms))
@@ -215,13 +237,13 @@
 ;; handle temporary ids
 
 (defn new-tempid 
-  "make a temporary id."
+  "Make a temporary id."
   ([]           (d/tempid ":db.part/user"))
   ([part]       (d/tempid part))
   ([part value] (d/tempid part value)))
 
 (defn new-tx-tempid 
-  "make a temporary id for a transaction attribute."
+  "Make a temporary id for a transaction attribute."
   []  
   (d/tempid ":db.part/tx"))
 
@@ -229,7 +251,7 @@
 ;; handle database transactions
 
 (defn transact
-  "prepare a transaction future."
+  "Prepare a transaction future."
    [tx-data]
    (d/transact (get-conn) tx-data
      ))
@@ -256,34 +278,41 @@
 ;; get results from latest transaction
 
 (defn get-db-before []
+  "Get the beforde-db of the latest transcaction."
   (when @*latest-tx-result*
     (:db-before @*latest-tx-result*)))
 
 (defmacro with-db-before 
+  "Eval forms with a the before-tx-db set as current db." 
   [& forms]
   `(binding [*current-db* (get-db-before)]
     ~@forms))
 
 (defn get-db-after []
+   "Get the after-db of the latest transcaction."
   (when @*latest-tx-result*
     (:db-after @*latest-tx-result*)))
 
 (defmacro with-db-after 
+  "Eval forms with a the after-tx-db set as current db." 
   [& forms]
   `(binding [*current-db* (get-db-after)]
     ~@forms))
 
 (defn get-tx-result-data
+  "Get the result data of the latest transcaction."
   []
   (when @*latest-tx-result*
     (:tx-data @*latest-tx-result*)))
 
 (defn get-tx-result-tempids
+  "Get the result tempids of the latest transcaction."
   []
   (when @*latest-tx-result*
     (:tempids @*latest-tx-result*)))
 
 (defn tempid->eid
+  "Resolve a temporary id to entity id."
   [temp-id]
   (d/resolve-tempid (get-db)
                     (get-tx-result-tempids) temp-id))
@@ -312,6 +341,7 @@
 ;; run transaction in demarcation
 
 (defn commit-pending-transaction
+  "Commit transaction run in a demarcation"
   []
   (when-not (or *db-test-mode* 
                 (empty? @*pending-tx-data*)) 
@@ -320,6 +350,7 @@
     ))
   
 (defn run-in-demarcation 
+  "Run transaction in a demarcation"
   [thunk]
   (binding [*in-demarcation*  true
             *pending-tx-data* (atom [])
@@ -329,8 +360,9 @@
       res)))
 
 (defmacro in-demarcation 
-  [& body]
-  `(run-in-demarcation (fn [] ~@body)))
+  "Eval forms within a transaction demarcation."
+  [& forms]
+  `(run-in-demarcation (fn [] ~@forms)))
 
 (defn wrap-demarcation
   "A Ring middleware providing tx-demarcation."
@@ -356,6 +388,7 @@
   [message & body]
   `(testing ~message
      (with-demarcation true ~body)))
+
 
 ;; handle partitions
 
@@ -1336,12 +1369,9 @@
   (find-es-m schema-query))
 
 ;; todo:
-
 ;; attribute history
 ;; Neuerungen in datomic: Aggregatfunktionen - max, random, sample ... 
 ;; Tests/Beispiele schreiben!
-
-
 
 ;;;;; trickery
 
