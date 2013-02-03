@@ -67,7 +67,7 @@
 (count results)
 (second results)
 
-;; this works! - example from: day-of-datomic, hello_world.clj
+;; example from: day-of-datomic, hello_world.clj
 (def tx-result
   (dt/tx!
    [[:db/add (dt/new-tempid :db.part/user)
