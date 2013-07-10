@@ -273,7 +273,8 @@
    (reset! *latest-tx-result* nil) 
    ;; may throw exception
    (reset! *latest-tx-result* 
-         (transact! tx-data)))
+         (transact! tx-data))
+   (fresh-db))
 
 ;; get results from latest transaction
 

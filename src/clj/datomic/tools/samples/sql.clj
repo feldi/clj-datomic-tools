@@ -45,6 +45,7 @@
 
 ;; "select" from "table" by "primary key"
 (def e (dt/find-e '[:find ?e :in $ ?v :where [?e :address/oid ?v]] "oid2"))
+(println "e = " + e)
 
 ;; some stuff dealing with VO's = Value Objects:
 

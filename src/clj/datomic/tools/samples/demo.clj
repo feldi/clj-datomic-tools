@@ -77,10 +77,12 @@
                       :where [?e :db/doc "Hello world"]]
                     ))
 
+(pprint q-result)
+
 ;; schema itself is data
 (def doc-entity (dt/eid->e :db/doc))
 
-(dt/e->touched doc-entity)
+(pprint (dt/e->touched doc-entity)) 
 
 ;; examples finished.
 
