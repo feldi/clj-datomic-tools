@@ -502,6 +502,13 @@
     (eid->touched eid))
   )
 
+;; from simulant/util.clj
+(defn tx-ent
+  "Resolve entity id to entity as of the :db-after value of a tx result"
+  [txresult eid]
+  (let [{:keys [db-after tempids]} txresult]
+    (d/entity db-after (d/resolve-tempid db-after tempids eid))))
+
 ;; handle attributes
 
 (defn defattr 
@@ -647,7 +654,8 @@
 ;; Entity-Id protocol
 
 (defprotocol Eid
-  (eid [_]))
+   "A protocol for retrieving an entity's id."
+  (eid [_] "identifying id for a value"))
 
 (extend-protocol Eid
   java.lang.Long
@@ -655,6 +663,9 @@
 
   datomic.Entity
   (eid [entity] (:db/id entity))
+  
+  java.util.Map
+  (e [ent] (:db/id ent))
 )
 
 ;; handle queries
@@ -684,7 +695,7 @@
 (defonce qes find-es)
 
 
-;; this from project 'datomic-simple'
+;; this is from project 'datomic-simple'
 (defn find-es-for-ns
   "Returns all entities for a given namespace."
   [nsp]
@@ -734,6 +745,15 @@
      (count res))
   )
 
+(defn count-by
+  "Count the number of entities possessing attribute attr"
+  [attr]
+  (->> (d/q '[:find (count ?e)
+              :in $ ?attr
+              :where [?e ?attr]]
+            (get-db) attr)
+       ffirst))
+
 (defn is-unique?
   "Checks if the query returns exactly one item."
   [query & args]
@@ -743,7 +763,7 @@
 
 ;; handle values
 
-;; project 'day of datomic' name : "maybe"
+;; from project 'day of datomic' name : "maybe"
 (defn get-value
   "Returns the value of attr for e, or default if e does not possess
    any values for attr. Cardinality-many attributes will be
