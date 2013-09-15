@@ -12,10 +12,11 @@
   )
 
 ;; create a temporary database 
-(dt/scratch-database)
+(dt/create-scratch-database)
 
 ;; define schema: "table" named 'address' with "fields"
-(dt/defattr 'oid     :ns 'address 
+(dt/defattr 'oid   
+  :ns 'address 
   :ext-key? true 
   :doc "object id, the 'primary key'")
 (dt/defattr 'code  :ns 'address

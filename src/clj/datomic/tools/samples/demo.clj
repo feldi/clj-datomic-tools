@@ -20,7 +20,7 @@
 
 
 ;; create a temporary database 
-(dt/scratch-database)
+(dt/create-scratch-database)
 
 ;; parse and load schema file
 (dt/transact-all! "src/resources/samples/seattle/seattle-schema.dtm")

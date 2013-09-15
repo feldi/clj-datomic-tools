@@ -42,7 +42,7 @@
 
 ;; handle multiple databases
 
-(defrecord ^:private Database [name uri conn])
+(defrecord ^:private Database [name db-uri conn])
 
 (defonce ^:dynamic *databases*         (atom {}))
 (defonce ^:dynamic *current-database*  (atom nil))
@@ -64,47 +64,48 @@
 (defonce ^:dynamic *rule-base*        (atom []))
 
 
-;; handle database names and uris
+;; handle database names and URIs
 
 (defn defdatabase 
-  "Set up a database by uri and name."
-  [uri name]
-  (let [full-name (str uri "/" name)
-        database  (Database. name full-name nil)] 
+  "Set up a database object by name and URI."
+  [name db-uri]
+  (let [database (->Database name db-uri nil)] 
     (swap! *databases* assoc name database)
     (reset! *current-database* database)
-    name)
-  )
+    name))
 
 (defmacro def-free-database 
   "Set up a free in-memory database."
   [name]
-  `(defdatabase "datomic:free://localhost:4334" ~name)
-  )
+  `(defdatabase ~name (str "datomic:free://localhost:4334/" ~name)))
 
 (defmacro def-dev-database 
   "Set up a local-storage database."
   [name]
-  `(defdatabase "datomic:dev://localhost:4334" ~name)
-  )
+  `(defdatabase ~name (str "datomic:dev://localhost:4334/" ~name)))
 
 (defmacro def-mem-database
   "Set up a in-memory database."
   [name]
-  `(defdatabase "datomic:mem:/" ~name)
-  )
+  `(defdatabase ~name (str "datomic:mem:/" ~name)))
+
+(defmacro def-sql-database
+  "Set up a sql database."
+  [name map-or-jdbc-params]
+  (if (map? map-or-jdbc-params)
+    `(defdatabase  ~name ~map-or-jdbc-params)         
+    `(defdatabase  ~name (str "datomic:sql:/" ~name ~map-or-jdbc-params))))
 
 (defn get-database 
-  "Get a named database."
+  "Get a database by name."
   [name]
   (get @*databases* name)
   )
 
 (defn get-database-uri 
   "Get the URI of the current or a named database." 
-  ([]     (:uri @*current-database*))
-  ([name] (or (:uri (get-database name)) name ))
-  )
+  ([]     (:db-uri @*current-database*))
+  ([name] (or (:db-uri (get-database name)) name )))
 
 
 ;; handle databases 
@@ -114,7 +115,7 @@
   [name]
   (let [full-name (get-database-uri name)
         conn      (d/connect full-name) 
-        database  (Database. name full-name 
+        database  (->Database name full-name 
                              conn)] 
     (swap! *databases* assoc name database)
     (reset! *current-database* database)
@@ -162,12 +163,17 @@
   ([old-name new-name] (rename-database* old-name
                                          new-name)))
 
+(defn shutdown
+  "Shutdown all peer resources."
+  [shutdown-clojure]
+  (d/shutdown shutdown-clojure))
+
 ;; use for testing or showcase purposes
 
-(defn scratch-database
+(defn create-scratch-database
   "Make a throw-away-database, e.g. for testing or showcase use."
   []
-  (defdatabase "datomic:mem:/" (str "scratch-db-" (d/squuid)))
+  (defdatabase (str "scratch-db-" (d/squuid)) "datomic:mem:/")
   (create-database) 
   (println (str "Created database " (get-database-uri))) 
   (get-database-uri))
@@ -176,7 +182,7 @@
   "Use throw-away-database for the forms, e.g. for testing or showcase use."
   [& forms]
   `(do
-     (scratch-database)
+     (create-scratch-database)
      ~@forms
      (delete-database)))
 
@@ -503,11 +509,13 @@
   )
 
 ;; from simulant/util.clj
-(defn tx-ent
+(defn tx->e
   "Resolve entity id to entity as of the :db-after value of a tx result"
-  [txresult eid]
-  (let [{:keys [db-after tempids]} txresult]
-    (d/entity db-after (d/resolve-tempid db-after tempids eid))))
+  ([eid]
+    (tx->e @*latest-tx-result* eid))
+  ([txresult eid]
+    (let [{:keys [db-after tempids]} txresult]
+    (d/entity db-after (d/resolve-tempid db-after tempids eid)))))
 
 ;; handle attributes
 
@@ -1293,7 +1301,7 @@
   value for the life of a request."
   [handler db-uri db-name]
   (fn [request]
-    (defdatabase db-uri db-name)
+    (defdatabase db-name db-uri)
     (open-database db-name)
     (handler request)))
 
