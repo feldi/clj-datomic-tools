@@ -55,7 +55,6 @@
 
 ;; from Demonic:
 ;; vars for running a transaction in demarcation
-
 (defonce ^:dynamic *in-demarcation*    false)
 (defonce ^:dynamic *pending-tx-data*  (atom []))
 (defonce ^:dynamic *db-test-mode*      false)
@@ -74,23 +73,27 @@
     (reset! *current-database* database)
     name))
 
-(defmacro def-free-database 
-  "Set up a free in-memory database."
-  [name]
-  `(defdatabase ~name (str "datomic:free://localhost:4334/" ~name)))
-
-(defmacro def-dev-database 
-  "Set up a local-storage database."
-  [name]
-  `(defdatabase ~name (str "datomic:dev://localhost:4334/" ~name)))
-
 (defmacro def-mem-database
   "Set up a in-memory database."
   [name]
   `(defdatabase ~name (str "datomic:mem:/" ~name)))
 
+(defmacro def-free-database 
+  "Set up a free local storage database."
+  ([name]
+  `(defdatabase ~name (str "datomic:free://localhost:4334/" ~name)))
+  ([name port]
+  `(defdatabase ~name (str "datomic:free://localhost:" + port + "/" ~name))))
+
+(defmacro def-dev-database 
+  "Set up a local-storage database (requires license key)."
+  ([name]
+  `(defdatabase ~name (str "datomic:dev://localhost:4334/" ~name)))
+  ([name port]
+  `(defdatabase ~name (str "datomic:dev://localhost:" + port + "/" ~name))))
+
 (defmacro def-sql-database
-  "Set up a sql database."
+  "Set up a sql database (requires license key)."
   [name map-or-jdbc-params]
   (if (map? map-or-jdbc-params)
     `(defdatabase  ~name ~map-or-jdbc-params)         
@@ -202,7 +205,7 @@
     ~@forms))
 
 
-;; handle db as values
+;; handle db as value
 
 (defn set-db
   "Set the current db." 
@@ -321,7 +324,7 @@
 (defn tempid->eid
   "Resolve a temporary id to entity id."
   [temp-id]
-  (d/resolve-tempid (get-db)
+  (d/resolve-tempid (get-db-after)
                     (get-tx-result-tempids) temp-id))
 
 (defn prepare-tx-async
@@ -604,28 +607,28 @@
 
 ;; handle enums
 
-(defn add-enum-value [ns val]
-  "Add a new enum value."
+(defn add-enum [ns enum]
+  "Add a new enum."
   (let [tx-data 
         [[:db/add #db/id[:db.part/user]
-          :db/ident (keyword (str ns "/" (name val)))]]
+          :db/ident (keyword (str ns "/" (name enum)))]]
        ]
   (tx! tx-data))
   )
 
 (defn defenums
-  "Define a new enum with values."
-  [ns & vals]
-  (doseq [val vals]
-    (add-enum-value ns val)
+  "Define new enums."
+  [ns & enums]
+  (doseq [enum enums]
+    (add-enum ns enum)
     ))
 
-(defn remove-enum-value
-  "Delete an enum value."
-  [ns val]
+(defn remove-enum
+  "Delete an enum."
+  [ns enum]
   (let [tx-data 
         [[:db/retract :db.part/user
-          :db/ident (keyword (str ns "/" (name val)))]]
+          :db/ident (keyword (str ns "/" (name enum)))]]
        ]
   (tx! tx-data))
   )
@@ -662,8 +665,8 @@
 ;; Entity-Id protocol
 
 (defprotocol Eid
-   "A protocol for retrieving an entity's id."
-  (eid [_] "identifying id for a value"))
+   "A protocol for retrieving an entities id."
+  (eid [_] "identifying id for an entity"))
 
 (extend-protocol Eid
   java.lang.Long
@@ -837,6 +840,11 @@
      (tempid->eid temp-id)
     ))
 
+(defn upsert-entity
+  "Sets the values of attrs for a known entity."
+   [eid & av-pairs]
+   (set-values-by-map eid (apply hash-map av-pairs)))
+
 ;; handle tx-data 
 
 (defn new-tx-map 
@@ -867,9 +875,9 @@
 (defn inject-new-ids 
   "add new entity ids to all the entities in a list."
   [part & es]
-  (let [partition (or part :db.part/user)]
+  (let [part (or part :db.part/user)]
     (doseq [e es]
-      (add-new-id partition e))))
+      (add-new-id part e))))
 
 (defn make-tempids 
   "Generate a list of n temp-ids."
