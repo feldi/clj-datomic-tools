@@ -44,23 +44,23 @@
 
 (defrecord ^:private Database [name db-uri conn])
 
-(defonce ^:dynamic *databases*         (atom {}))
-(defonce ^:dynamic *current-database*  (atom nil))
+(defonce ^:private ^:dynamic *databases*         (atom {}))
+(defonce ^:private ^:dynamic *current-database*  (atom nil))
 
 ;; dynamic vars, e.g. used by with-* functions
-(defonce ^:dynamic *current-db*         (atom nil))
-(defonce ^:dynamic *latest-async-tx*    (atom nil))
-(defonce ^:dynamic *latest-tx-result*   (atom nil))
-(defonce ^:dynamic *tx-report-queue*    (atom nil))
+(defonce ^:private ^:dynamic *current-db*         (atom nil))
+(defonce ^:private ^:dynamic *latest-async-tx*    (atom nil))
+(defonce ^:private ^:dynamic *latest-tx-result*   (atom nil))
+(defonce ^:private ^:dynamic *tx-report-queue*    (atom nil))
 
 ;; from Demonic:
 ;; vars for running a transaction in demarcation
-(defonce ^:dynamic *in-demarcation*    false)
-(defonce ^:dynamic *pending-tx-data*  (atom []))
-(defonce ^:dynamic *db-test-mode*      false)
+(defonce ^:private ^:dynamic *in-demarcation*    false)
+(defonce ^:private ^:dynamic *pending-tx-data*  (atom []))
+(defonce ^:private ^:dynamic *db-test-mode*      false)
 
 ;; the rule base
-(defonce ^:dynamic *rule-base*        (atom []))
+(defonce ^:private ^:dynamic *rule-base*        (atom []))
 
 
 ;; handle database names and URIs
@@ -1377,6 +1377,41 @@
    transaction data."
   [eid]
   (e->tx-data (eid->e eid)))
+
+PostPosted: Sat Sep 07, 2013 12:54 pm    Post subject: Re: How can you specify that an entity does not have an attribute ina query?Report Spam
+On Fri, Sep 06, 2013 at 12:08:57PM -0700, Chris Jones wrote:
+Any update on a negation feature? I'm currently using a similar set of 
+functions to handle 'outer-join' type cases:
+
+(defn attribute-or-nil
+" Returns the value of the specified attribute or nil if the attribute 
+  isn't defined for the given entity.
+  Usage: [(attribute-or-nil $ ?c :customer/name) ?name]"
+[db eid attr]
+(if (or (map? eid) (= (class eid) datomic.query.EntityMap))
+(get (d/entity db (:db/id eid)) attr)
+(get (d/entity db eid) attr)))
+
+(defn boolean-attribute-or-false-if-nil
+" Returns the value of the specified attribute or false if the attribute 
+  isn't defined for the given entity.
+  Usage: [(boolean-attribute-or-false-if-nil ?c :customer/registered) 
+  ?registered"
+[db eid attr]
+(let [ent (if (or (map? eid) (= (class eid) datomic.query.EntityMap)) eid (
+d/entity db eid))
+val (get ent attr)]
+(if (nil? val)
+false
+val)))
+
+(defn is-not-set?
+"Checks if entity dose NOT have attribute.
+ Equivalent to IS NULL in SQL.
+ From a Ken Restivo post: Very useful. Thanks to tomjack on IRC."
+[entity-id attr]
+(nil? (seq (d/datoms (get-db) :eavt entity-id attr))))
+
 
 ;;; Query
 
