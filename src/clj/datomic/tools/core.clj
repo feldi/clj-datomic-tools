@@ -189,6 +189,11 @@
      ~@forms
      (delete-database)))
 
+(defmacro with-database 
+  "Eval forms with the named database set as current database." 
+  [name & forms]
+  `(binding [*current-database* (get-database ~name)]
+    ~@forms))
 
 ;; handle database connections
 
@@ -198,11 +203,50 @@
   ([name] (:conn (get-database name)))
   )
 
-(defmacro with-database 
-  "Eval forms with the named database set as current database." 
-  [name & forms]
-  `(binding [*current-database* (get-database ~name)]
-    ~@forms))
+(defn release
+  "Request the release of resources associated with a connection."
+  ([] (d/release (get-conn)))
+  ([name] (d/release (get-conn name)))) 
+
+(defn sync-conn
+  "Used to coordinate with other peers."
+  ([] (d/sync (get-conn)))
+  ([name] (d/sync (get-conn name)))) 
+
+(defn sync-conn-with-t
+  "Used to coordinate with other peers."
+  ([t] (d/sync (get-conn) t))
+  ([name t] (d/sync (get-conn name) t))) 
+
+(defn sync-conn-with-excise
+  "Used to coordinate with background excision."
+  ([t] (d/sync-excise (get-conn) t))
+  ([name t] (d/sync-excise (get-conn name) t))) 
+
+(defn sync-conn-with-indexing
+  "Used to coordinate with background indexing jobs."
+  ([t] (d/sync-index (get-conn) t))
+  ([name t] (d/sync-index (get-conn name) t))) 
+
+(defn sync-conn-with-schema-changes
+  "Used to coordinate with background schema changes."
+  ([t] (d/sync-schema (get-conn) t))
+  ([name t] (d/sync-schema (get-conn name) t))) 
+
+
+;; handling the database log
+
+(defn get-log
+  "Retrieves a value for the log."
+  ([] (d/log (get-conn)))
+  ([name] (d/log (get-conn name)))) 
+
+(defn get-log-tx-range
+  "Returns a range of transactions in the log, as a map with the structure
+   {:t t-point-of-the-tx 
+    :data datoms-inserted-retracted}"
+  ([start end] (get-log-tx-range (get-log) start end))
+  ([log start end] (d/tx-range log start end)))
 
 
 ;; handle db as value
@@ -444,6 +488,11 @@
   [e]
   (:db/id e))
 
+(defn e->db
+  "Returns the database value that is the basis for this entity."
+  [e]
+  (d/entity-db e))
+
 (defn delete-entity 
   "Remove an entity with all its attributes from the database."
   [entity-id]
@@ -510,6 +559,11 @@
   (when-let [eid (key->eid key value) ]
     (eid->touched eid))
   )
+
+(defn entid-at
+  "Returns a fabricated entity id."
+  [part t-or-date]
+  (d/entid-at (get-db) part t-or-date))
 
 ;; from simulant/util.clj
 (defn tx->e
@@ -964,10 +1018,21 @@
   []
   (d/basis-t (get-db)))
 
+(defn basis-tx 
+  "Returns the transaction number of the most recent transaction 
+   reachable via the current db value."
+  []
+  (d/t->tx (d/basis-t (get-db))))
+
 (defn next-t
   "Returns the t one beyond the highest reachable via this db value."
   []
   (d/next-t (get-db)))
+
+(defn next-tx
+  "Returns the transaction id one beyond the highest reachable via this db value."
+  []
+  (d/t->tx (d/next-t (get-db))))
 
 (defn t->tx
   " Return the transaction id associated with a t value."
@@ -987,7 +1052,7 @@
 (defn since-t
   "Returns the since point, or nil if none."
   []
-  (d/since-t (get)))
+  (d/since-t (get-db)))
 
 (defn as-of
   "Returns the value of the database as of some point t, inclusive.
@@ -1028,7 +1093,18 @@
    starting at start, or from beginning if start is nil, and ending
    before end, or through end of attr index if end is nil."
   [a start end]
-  (d/index-range (get-db) start end))
+  (d/index-range (get-db) a start end))
+
+(defmacro datoms
+  "Raw access to the index data, by index."
+  [index & components]
+  `(d/datoms (get-db) ~index ~@components))
+
+(defmacro seek-datoms
+  "Raw access to the index data, by index.
+   There must not be an exact match, c.f. the datoms fucntion."
+  [index & components]
+  `(d/seek-datoms (get-db) ~index ~@components))
 
 (def add-listener d/add-listener)
 
@@ -1128,7 +1204,6 @@
    It captures the argument names as 'db' and 'datom'."
   [& body]
   `(fn [~'db ^Datom ~'datom] ~@body))
-
 
 ;; aggregates
 
@@ -1378,39 +1453,38 @@
   [eid]
   (e->tx-data (eid->e eid)))
 
-PostPosted: Sat Sep 07, 2013 12:54 pm    Post subject: Re: How can you specify that an entity does not have an attribute ina query?Report Spam
-On Fri, Sep 06, 2013 at 12:08:57PM -0700, Chris Jones wrote:
-Any update on a negation feature? I'm currently using a similar set of 
-functions to handle 'outer-join' type cases:
+;PostPosted: Sat Sep 07, 2013 12:54 pm    Post subject: Re: How can you specify that an entity does not have an attribute ina query?Report Spam
+;On Fri, Sep 06, 2013 at 12:08:57PM -0700, Chris Jones wrote:
+;Any update on a negation feature? I'm currently using a similar set of 
+;functions to handle 'outer-join' type cases:
 
 (defn attribute-or-nil
-" Returns the value of the specified attribute or nil if the attribute 
-  isn't defined for the given entity.
-  Usage: [(attribute-or-nil $ ?c :customer/name) ?name]"
-[db eid attr]
-(if (or (map? eid) (= (class eid) datomic.query.EntityMap))
-(get (d/entity db (:db/id eid)) attr)
-(get (d/entity db eid) attr)))
+  "Returns the value of the specified attribute or nil if the attribute 
+   isn't defined for the given entity.
+    Usage: [(attribute-or-nil $ ?c :customer/name) ?name]"
+  [db eid attr]
+  (if (or (map? eid) (= (class eid) datomic.query.EntityMap))
+    (get (d/entity db (:db/id eid)) attr)
+    (get (d/entity db eid) attr)))
 
 (defn boolean-attribute-or-false-if-nil
-" Returns the value of the specified attribute or false if the attribute 
-  isn't defined for the given entity.
-  Usage: [(boolean-attribute-or-false-if-nil ?c :customer/registered) 
-  ?registered"
-[db eid attr]
-(let [ent (if (or (map? eid) (= (class eid) datomic.query.EntityMap)) eid (
-d/entity db eid))
-val (get ent attr)]
-(if (nil? val)
-false
-val)))
+  "Returns the value of the specified attribute or false if the attribute 
+   isn't defined for the given entity.
+   Usage: [(boolean-attribute-or-false-if-nil ?c :customer/registered) 
+   ?registered"
+  [db eid attr]
+  (let [ent (if (or (map? eid) (= (class eid) datomic.query.EntityMap)) eid (d/entity db eid))
+        val (get ent attr)]
+    (if (nil? val)
+      false
+      val)))
 
 (defn is-not-set?
-"Checks if entity dose NOT have attribute.
- Equivalent to IS NULL in SQL.
- From a Ken Restivo post: Very useful. Thanks to tomjack on IRC."
-[entity-id attr]
-(nil? (seq (d/datoms (get-db) :eavt entity-id attr))))
+  "Checks if entity dose NOT have attribute.
+   Equivalent to IS NULL in SQL.
+   From a Ken Restivo post: Very useful. Thanks to tomjack on IRC."
+  [entity-id attr]
+  (nil? (seq (d/datoms (get-db) :eavt entity-id attr))))
 
 
 ;;; Query

@@ -23,10 +23,10 @@
 (dt/create-scratch-database)
 
 ;; parse and load schema file
-(dt/transact-all! "src/resources/samples/seattle/seattle-schema.dtm")
-  
+(dt/transact-all! "src/resources/samples/seattle/seattle-schema.edn")
+
 ;; parse and load seed data file
-(def tx-datas (dt/read-all "src/resources/samples/seattle/seattle-data0.dtm"))
+(def tx-datas (dt/read-all "src/resources/samples/seattle/seattle-data0.edn"))
 
 ; read-all returns a vector of tx-data, so lets get the first
 (def tx-data (first tx-datas)) 
@@ -87,7 +87,7 @@
 ;; examples finished.
 
 ;; delete the temporary database
-(dt/delete-database)
+#_(dt/delete-database)
 
 'done
 
