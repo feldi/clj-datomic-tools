@@ -61,3 +61,8 @@
   [query-result]
   (solo (solo (lazy-seq query-result))))
 
+(defn save-val
+  [m]
+  (when (map? m) 
+    (val m)))
+

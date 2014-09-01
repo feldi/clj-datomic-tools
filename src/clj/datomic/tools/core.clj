@@ -40,9 +40,47 @@
 ;; 'card'       denotes the cardinality of an attribute 
 
 
-;; handle multiple databases
+;; the datomic system
 
-(defrecord ^:private Database [name db-uri conn])
+(defonce ^:private ^:dynamic *datomic-system* (atom {}))
+
+(defn init-system
+  []
+  (reset! *datomic-system* 
+                {
+                 ;; handle multiple databases
+                 :databases          {},
+                 :current-database   nil,
+                 
+                 ;; used by with-* functions
+                 :current-db         nil,
+                 :latest-async-tx    nil,
+                 :latest-tx-result   nil,
+                 :tx-report-queue    nil,
+                 
+                 ;; from Demonic:
+                 ;; running a transaction in demarcation
+                 :in-demarcation    false,
+                 :pending-tx-data   [],
+                 :db-test-mode      false,
+                 
+                 ;; the global rule base
+                 :rule-base         []
+                 }))
+
+(defn start-system
+  []
+  (init-system))
+
+(defn stop-system
+  []
+  (reset! *datomic-system* nil))
+
+(defn get-system
+  []
+  @*datomic-system*)
+
+;; handle multiple databases
 
 (defonce ^:private ^:dynamic *databases*         (atom {}))
 (defonce ^:private ^:dynamic *current-database*  (atom nil))
@@ -64,6 +102,8 @@
 
 
 ;; handle database names and URIs
+
+(defrecord ^:private Database [name db-uri conn])
 
 (defn defdatabase 
   "Set up a database object by name and URI."
@@ -370,6 +410,11 @@
   [temp-id]
   (d/resolve-tempid (get-db-after)
                     (get-tx-result-tempids) temp-id))
+
+(defn get-eid-of-tx
+  "Gets the (first) eid of the latest transaction."
+  []
+  (-> *latest-tx-result* deref :tempids first dtu/save-val))
 
 (defn prepare-tx-async
   "Initiate an async transcaction"
