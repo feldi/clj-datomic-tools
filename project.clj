@@ -4,5 +4,5 @@
   :license {:name "Eclipse Public License"
             :url "http://www.eclipse.org/legal/epl-v10.html"}
   :min-lein-version "2.0.0"
-  :dependencies [[org.clojure/clojure "1.6.0"]
-                 [com.datomic/datomic-free "0.9.4497"]])
+  :dependencies [[org.clojure/clojure "1.8.0"]
+                 [com.datomic/datomic-free "0.9.5372"]])
