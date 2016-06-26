@@ -1,4 +1,4 @@
-(defproject clj-datomic-tools "0.3.0"
+(defproject clj-datomic-tools "0.3.1"
   :description "Tools for datomic db"
   :url "http://github.com/feldi/clj-datomic-tools"
   :license {:name "Eclipse Public License"
