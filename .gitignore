@@ -12,3 +12,4 @@ pom.xml
 /.settings
 /.idea
 .nrepl-port
+/clj-datomic-tools.iml
